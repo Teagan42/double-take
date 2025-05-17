@@ -114,6 +114,7 @@ module.exports.config = {
         { required: ['aiserver'] },
         { required: ['facebox'] },
         { required: ['rekognition'] },
+        { required: ['frigate'] },
       ],
       properties: {
         compreface: {
@@ -165,6 +166,14 @@ module.exports.config = {
             cameras: { type: 'array' },
           },
         },
+        frigate: {
+          type: 'object',
+          required: ['url'],
+          properties: {
+            url: { type: 'string'},
+            opencv_face_required: { type: 'boolean' },
+          }
+        }
       },
     },
     notify: {

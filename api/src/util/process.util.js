@@ -15,7 +15,7 @@ const config = require('../constants/config');
 
 module.exports.polling = async (
   event,
-  { retries, id, type, url, breakMatch, MATCH_IDS, delay }
+  { retries, id, type, url, breakMatch, MATCH_IDS, delay, box }
 ) => {
   event.type = type;
   breakMatch = !!(breakMatch === 'true' || breakMatch === true);
@@ -53,6 +53,8 @@ module.exports.polling = async (
         }
 
         const results = await this.start({
+          id,
+          event,
           camera: event.camera,
           filename,
           tmp: tmp.mask || tmp.source,
@@ -135,7 +137,7 @@ module.exports.save = async (event, results, filename, tmp) => {
   }
 };
 
-module.exports.start = async ({ camera, filename, tmp, attempts = 1, errors = {} }) => {
+module.exports.start = async ({id, event, camera, filename, tmp, attempts = 1, errors = {} }) => {
   const processed = [];
   const promises = [];
 
@@ -152,7 +154,7 @@ module.exports.start = async ({ camera, filename, tmp, attempts = 1, errors = {}
     if (cameraAllowed) {
       const faceCount = faceCountRequired ? await opencv.faceCount(tmp) : null;
       if ((faceCountRequired && faceCount > 0) || !faceCountRequired) {
-        promises.push(this.process({ camera, detector, tmp, errors }));
+        promises.push(this.process({id, event, camera, detector, tmp, errors, event }));
         processed.push(detector);
       } else console.verbose(`processing skipped for ${detector}: no faces found`);
     } else console.verbose(`processing skipped for ${detector}: ${camera} not allowed`);
@@ -172,10 +174,10 @@ module.exports.start = async ({ camera, filename, tmp, attempts = 1, errors = {}
   return results;
 };
 
-module.exports.process = async ({ camera, detector, tmp, errors }) => {
+module.exports.process = async ({id, event, camera, detector, tmp, errors }) => {
   try {
     perf.start(detector);
-    const { data } = await recognize({ detector, key: tmp });
+    const { data } = await recognize({ detector, key: tmp, id, event });
     const duration = parseFloat((perf.stop(detector).time / 1000).toFixed(2));
     errors[detector] = 0;
     return { duration, results: normalize({ camera, detector, data }) };
