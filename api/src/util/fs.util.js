@@ -1,6 +1,8 @@
 const fs = require('fs');
+const fsPromises = require('fs/promises');
 const axios = require('axios');
 const time = require('./time.util');
+const database = require('./db.util');
 const { jwt } = require('./auth.util');
 const { AUTH, STORAGE } = require('../constants')();
 
@@ -62,9 +64,8 @@ module.exports.files = {
   },
 };
 
-module.exports.writer = async (file, data) => {
-  fs.writeFileSync(file, data);
-};
+module.exports.writer = async (file, data) =>
+  await fsPromises.writeFile(file, data);
 
 module.exports.writerStream = async (stream, file) => {
   return new Promise((resolve) => {
@@ -105,10 +106,10 @@ module.exports.copy = (source, destination) => {
   });
 };
 
-module.exports.delete = (destination) => {
+module.exports.delete = async (destination) => {
   try {
-    if (fs.existsSync(destination)) {
-      fs.unlinkSync(destination);
+    if (await fsPromises.statfs(destination)) {
+      await fsPromises.unlink(destination);
     }
   } catch (error) {
     error.message = `delete error: ${error.message}`;

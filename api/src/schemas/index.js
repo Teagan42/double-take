@@ -1,3 +1,5 @@
+const { opencv } = require('../constants/defaults');
+
 module.exports.config = {
   type: 'object',
   required: ['detectors'],

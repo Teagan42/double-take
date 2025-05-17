@@ -1,50 +1,58 @@
 const axios = require('axios');
 const FormData = require('form-data');
-const fs = require('fs');
 const actions = require('./actions');
+const { loadImage, createCanvas } = require('canvas');
 const { DETECTORS } = require('../../constants')();
 const config = require('../../constants/config');
-const { x } = require('joi');
-const e = require('express');
+
+async function matToStream(mat) {
+  const canvas = createCanvas(mat.width, mat.height);
+  await global.cv.imshow(canvas, mat);
+  return canvas.toBuffer('image/jpeg');
+}
 
 const { FRIGATE } = DETECTORS || {};
 
-module.exports.recognize = async ({ key, id, event }) => {
+module.exports.recognize = async ({ key, faces }) => {
   const { URL } = FRIGATE;
-  const formData = new FormData();
-  formData.append('file', fs.createReadStream(key));
-  // if (KEY) formData.append('api_key', KEY);
-  return axios({
-    method: 'post',
-    timeout: FRIGATE.TIMEOUT * 1000,
-    headers: {
-      ...formData.getHeaders(),
-    },
-    url: `${URL}/api/faces/recognize`,
-    validateStatus() {
-      return true;
-    },
-    data: formData,
-  }).then((response) => {
-    const box = event?.attributes?.snapshot?.attributes?.find((a) => a.label === 'face')
-      || event?.attributes?.snapshot?.box
-      || event?.attributes?.box
-      || [0,0, 100,100];
-    return {
-      ...response,
-      data: {
-        ...response.data,
-        predictions: [
-          {
-            confidence: response.data.score,
-            userid: response.data.face_name,
-            x_min: box[0],
-            y_min: box[1],
-            x_max: box[2],
-            y_max: box[3]
-          }
-        ]
+  const {cv}  = global;
+  const image = await loadImage(key);
+  const src = cv.imread(image);
+  const doRecognize = async (face) => {
+    const formData = new FormData();
+    const roi = src.roi(face);
+    formData.append('file', await matToStream(roi), 'file.jpg', 'image/jpeg');
+    // if (KEY) formData.append('api_key', KEY);
+    return await axios({
+      method: 'post',
+      timeout: FRIGATE.TIMEOUT * 1000,
+      headers: {
+        ...formData.getHeaders(),
+      },
+      url: `${URL}/api/faces/recognize`,
+      validateStatus() {
+        return true;
+      },
+      data: formData,
+    }).then((response) => ({
+      data: response.data,
+      prediction: {
+        confidence: response.data.score,
+        userid: response.data.face_name,
+        x_min: face.x,
+        y_min: face.y,
+        x_max: face.x + face.width,
+        y_max: face.y + face.height,
       }
+    }))
+  };
+  return await Promise.all(faces.map(doRecognize)).then((responses) => {
+    src.delete();
+    return {
+      data: {
+        predictions: responses.filter((response) => response.prediction.userid && response.prediction.confidence)
+          .map((response) => response.prediction),
+      },
     };
   });
 };
@@ -84,10 +92,6 @@ module.exports.remove = ({ name }) => {
 };
 
 module.exports.normalize = ({ camera, data }) => {
-  if (!data.success) {
-    console.warn('unexpected frigate data', data);
-    return [];
-  }
   const { MATCH, UNKNOWN } = config.detect(camera);
   if (!data.predictions) {
     console.warn('unexpected frigate predictions data');

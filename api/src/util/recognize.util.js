@@ -1,14 +1,15 @@
 const fs = require('fs');
+const fsPromises = require('fs/promises')
 const { STORAGE } = require('../constants')();
 
 module.exports.save = {
-  latest: (camera, best = [], misses = [], unknown = {}) => {
+  latest: async (camera, best = [], misses = [], unknown = {}) => {
     const names = [];
     const cameras = [];
 
-    [...best, ...misses].forEach(({ name, filename }) => {
+    await Promise.all([...best, ...misses].map(async ({ name, filename }) => {
       if (!names.includes(name)) {
-        fs.copyFileSync(
+        await fsPromises.copyFile(
           `${STORAGE.MEDIA.PATH}/matches/${filename}`,
           `${STORAGE.MEDIA.PATH}/latest/${name}.jpg`
         );
@@ -16,20 +17,20 @@ module.exports.save = {
       }
 
       if (!cameras.includes(camera)) {
-        fs.copyFileSync(
+        await fsPromises.copyFile(
           `${STORAGE.MEDIA.PATH}/matches/${filename}`,
           `${STORAGE.MEDIA.PATH}/latest/${camera}.jpg`
         );
         cameras.push(camera);
       }
-    });
+    }));
     if (unknown.filename) {
-      fs.copyFileSync(
+      await fsPromises.copyFile(
         `${STORAGE.MEDIA.PATH}/matches/${unknown.filename}`,
         `${STORAGE.MEDIA.PATH}/latest/unknown.jpg`
       );
       if (!best.length && !misses.length)
-        fs.copyFileSync(
+        await fsPromises.copyFile(
           `${STORAGE.MEDIA.PATH}/matches/${unknown.filename}`,
           `${STORAGE.MEDIA.PATH}/latest/${camera}.jpg`
         );

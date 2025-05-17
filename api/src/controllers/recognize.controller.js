@@ -17,12 +17,11 @@ const schedule = require('../util/schedule.util');
 const { AUTH, TOKEN, SERVER, STORAGE, UI } = require('../constants')();
 const fs = require('../util/fs.util');
 
-const { IDS, MATCH_IDS } = {
+const { IDS, MATCH_IDS, PROCESSING } = {
   IDS: [],
   MATCH_IDS: [],
+  PROCESSING: new Set(),
 };
-
-let PROCESSING = false;
 
 module.exports.test = async (req, res) => {
   const promises = [];
@@ -59,11 +58,11 @@ module.exports.start = async (req, res) => {
       const { type: frigateEventType, topic } = req.body;
       const attributes = req.body.after ? req.body.after : req.body.before;
       const { id, label, camera, area, current_zones: zones, box } = attributes;
-      event = { id, label, camera, area, zones, frigateEventType, topic, box, attributes, ...event };
+      event = { id, label, camera, area, zones, frigateEventType, topic, box, frigate: attributes, ...event };
     } else {
       const { url, camera } = req.query;
 
-      event = { id: uuidv4(), url, camera, zones: [], attributes: {}, ...event };
+      event = { id: uuidv4(), url, camera, zones: [], frigate: {}, ...event };
     }
 
     const { id, camera, zones, url } = event;
@@ -94,8 +93,9 @@ module.exports.start = async (req, res) => {
     }
 
     console.log(`processing ${camera}: ${id}`);
-    perf.start('request');
-    PROCESSING = true;
+    perfType = `request-${id}`;
+    perf.start(perfType);
+    PROCESSING.add(id);
 
     const promises = [];
 
@@ -152,7 +152,7 @@ module.exports.start = async (req, res) => {
       await Promise.all(promises)
     );
 
-    const duration = parseFloat((perf.stop('request').time / 1000).toFixed(2));
+    const duration = parseFloat((perf.stop(perfType).time / 1000).toFixed(2));
     const output = {
       id,
       duration,
@@ -177,8 +177,6 @@ module.exports.start = async (req, res) => {
     );
     console.log(loggedOutput);
 
-    PROCESSING = false;
-
     console.verbose(`Event type: ${event.type}`);
     recognize.save.latest(camera, best, misses, unknowns[0]);
     mqtt.recognize(output);
@@ -187,8 +185,11 @@ module.exports.start = async (req, res) => {
     if (output.matches.length) IDS.push(id);
     if (results.length) emit('recognize', true);
     res.send(output);
+    PROCESSING.delete(id);
   } catch (error) {
-    PROCESSING = false;
+    try {
+      PROCESSING.delete(id);
+    } catch(_) {}
     console.error(`An error occurred at ${error.stack}`);
     console.error(`An error occurred when recogniting file: ${error.message}`);
     // res.send(error);

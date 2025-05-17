@@ -1,5 +1,6 @@
 const axios = require('axios');
 const fs = require('fs');
+const fsPromises = require('fs/promises');
 const perf = require('execution-time')();
 const { v4: uuidv4 } = require('uuid');
 const filesystem = require('./fs.util');
@@ -25,13 +26,16 @@ module.exports.polling = async (
   const errors = {};
   let attempts = 0;
   let previousContentLength;
-  perf.start(type);
+  const perfType = `${type}-${event.camera}-${id}`;
+  perf.start(perfType);
 
   if (await this.isValidURL({ type, url })) {
+    console.info(`url is valid: ${perf.printTimeElapsed(perfType)} sec`)
     for (let i = 0; i < retries; i++) {
       if (breakMatch === true && MATCH_IDS.includes(id)) break;
 
       const stream = await this.stream(url);
+      console.info(`got stream: ${perf.printTimeElapsed(perfType)} sec`)
       const streamChanged = stream && previousContentLength !== stream.length;
       if (streamChanged) {
         const tmp = {
@@ -42,19 +46,23 @@ module.exports.polling = async (
 
         attempts = i + 1;
         previousContentLength = stream.length;
-        filesystem.writer(tmp.source, stream);
+        await filesystem.writer(tmp.source, stream);
+        console.info(`wrote temp file: ${perf.printTimeElapsed(perfType)} sec`)
 
         const maskBuffer = await mask.buffer(event, tmp.source);
+        console.info(`got mask buffer: ${perf.printTimeElapsed(perfType)} sec`)
         if (maskBuffer) {
           const { visible, buffer } = maskBuffer;
           tmp.mask =
             visible === true ? tmp.source : `${STORAGE.TMP.PATH}/${id}-${type}-${uuidv4()}.jpg`;
-          filesystem.writer(tmp.mask, buffer);
+          await filesystem.writer(tmp.mask, buffer);
+          console.info(`wrote mask buffer: ${perf.printTimeElapsed(perfType)} sec`)
         }
 
         const results = await this.start({
           id,
           event,
+          perfType,
           camera: event.camera,
           filename,
           tmp: tmp.mask || tmp.source,
@@ -62,12 +70,15 @@ module.exports.polling = async (
           errors,
         });
 
+        console.info(`got results: ${perf.printTimeElapsed(perfType)} sec`)
+
         const foundMatch = !!results.flatMap((obj) => obj.results.filter((item) => item.match))
           .length;
         const totalFaces = results.flatMap((obj) => obj.results.filter((item) => item)).length > 0;
 
         if (foundMatch || (UNKNOWN.SAVE && totalFaces)) {
           await this.save(event, results, filename, maskBuffer?.visible ? tmp.mask : tmp.source);
+          console.info(`matches saved: ${perf.printTimeElapsed(perfType)} sec`)
           if ((foundMatch && MATCH.BASE64) || (totalFaces && UNKNOWN.BASE64)) {
             const base64 =
               (foundMatch && MATCH.BASE64 === 'box') || (totalFaces && UNKNOWN.BASE64 === 'box')
@@ -76,13 +87,15 @@ module.exports.polling = async (
                   )
                 : stream;
             results.forEach((result) => (result.base64 = base64.toString('base64')));
+            console.info(`got base64: ${perf.printTimeElapsed(perfType)} sec`)
           }
         }
 
         allResults.push(...results);
 
-        if (tmp.mask) filesystem.delete(tmp.mask);
-        filesystem.delete(tmp.source);
+        if (tmp.mask) await filesystem.delete(tmp.mask);
+        await filesystem.delete(tmp.source);
+        console.info(`deleted temp file: ${perf.printTimeElapsed(perfType)} sec`)
 
         if (foundMatch) {
           MATCH_IDS.push(id);
@@ -92,12 +105,14 @@ module.exports.polling = async (
 
       /* if the image hasn't changed or the user has a delay set, sleep before trying to find another image
       to increase the changes it changed */
-      if ((frigateEventType && delay > 0) || !streamChanged)
-        await sleep(frigateEventType && delay > 0 ? delay : i * 0.5);
+      if ((frigateEventType && delay > 0) || !streamChanged) {
+        await sleep(frigateEventType && delay > 0 ? delay : i * 0.1);
+        console.info(`slept: ${perf.printTimeElapsed(perfType)} sec`)
+      }
     }
   }
 
-  const duration = parseFloat((perf.stop(type).time / 1000).toFixed(2));
+  const duration = parseFloat((perf.stop(perfType).time / 1000).toFixed(2));
 
   return {
     duration,
@@ -118,10 +133,11 @@ module.exports.polling = async (
  */
 module.exports.save = async (event, results, filename, tmp) => {
   try {
-    await filesystem.writerStream(
-      fs.createReadStream(tmp),
-      `${STORAGE.MEDIA.PATH}/matches/${filename}`
-    );
+    await fsPromises.link(tmp, `${STORAGE.MEDIA.PATH}/matches/${filename}`);
+    // await filesystem.writerStream(
+    //   fs.createReadStream(tmp),
+    //   `${STORAGE.MEDIA.PATH}/matches/${filename}`
+    // );
   } catch (error) {
     error.message = `save results error: ${error.message}`;
     console.error(error);
@@ -129,6 +145,11 @@ module.exports.save = async (event, results, filename, tmp) => {
   }
 
   try {
+    await database.create.frigate({
+      filename,
+      frigateEventId: event?.frigate?.id ?? event.id,
+      event: event.frigate ? JSON.stringify(event.frigate) : null
+    });
     await database.create.match({ filename, event, response: results });
   } catch (error) {
     error.message = `create match error: ${error.message}`;
@@ -137,11 +158,12 @@ module.exports.save = async (event, results, filename, tmp) => {
   }
 };
 
-module.exports.start = async ({id, event, camera, filename, tmp, attempts = 1, errors = {} }) => {
+module.exports.start = async ({id, perfType, event, camera, filename, tmp, attempts = 1, errors = {} }) => {
   const processed = [];
   const promises = [];
 
-  if (opencv.shouldLoad()) await opencv.load();
+  if (!global.cv && opencv.shouldLoad()) await opencv.load();
+  console.info(`loaded opencv: ${perf.printTimeElapsed(perfType)} sec`)
 
   for (const detector of DETECTORS) {
     if (!errors[detector]) errors[detector] = 0;
@@ -152,14 +174,16 @@ module.exports.start = async ({id, event, camera, filename, tmp, attempts = 1, e
     const faceCountRequired = detectorConfig?.opencv_face_required;
 
     if (cameraAllowed) {
-      const faceCount = faceCountRequired ? await opencv.faceCount(tmp) : null;
-      if ((faceCountRequired && faceCount > 0) || !faceCountRequired) {
-        promises.push(this.process({id, event, camera, detector, tmp, errors, event }));
+      const faces = faceCountRequired ? await opencv.faceCount(tmp) : null;
+      console.info(`${detector} counted faces: ${perf.printTimeElapsed(perfType)} sec`)
+      if ((faceCountRequired && faces.count > 0) || !faceCountRequired) {
+        promises.push(this.process({id, faces: faces.rects, event, filename, camera, detector, tmp, errors, event }));
         processed.push(detector);
       } else console.verbose(`processing skipped for ${detector}: no faces found`);
     } else console.verbose(`processing skipped for ${detector}: ${camera} not allowed`);
   }
   let results = await Promise.all(promises);
+  console.info(`detectors processed: ${perf.printTimeElapsed(perfType)} sec`)
 
   results = results.map((array, j) => {
     return {
@@ -174,10 +198,11 @@ module.exports.start = async ({id, event, camera, filename, tmp, attempts = 1, e
   return results;
 };
 
-module.exports.process = async ({id, event, camera, detector, tmp, errors }) => {
+module.exports.process = async ({id, faces, event, filename, camera, detector, tmp, errors }) => {
   try {
     perf.start(detector);
-    const { data } = await recognize({ detector, key: tmp, id, event });
+    const { data } = await recognize({ detector, key: tmp, faces, filename, id, event });
+    console.info(`detector ${detector} recognized: ${perf.printTimeElapsed(detector)} sec`)
     const duration = parseFloat((perf.stop(detector).time / 1000).toFixed(2));
     errors[detector] = 0;
     return { duration, results: normalize({ camera, detector, data }) };
@@ -191,6 +216,8 @@ module.exports.process = async ({id, event, camera, detector, tmp, errors }) => 
       console.warn(`sleeping for ${time} second(s)`);
       await sleep(time);
     }
+  } finally {
+    console.info(`detector ${detector} finished: ${perf.printTimeElapsed(detector)} sec`)
   }
 };
 

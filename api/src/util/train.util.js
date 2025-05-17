@@ -31,6 +31,7 @@ module.exports.queue = async (files, skip = []) => {
       const result = await this.process({
         name,
         key: `${STORAGE.MEDIA.PATH}/train/${name}/${filename}`,
+        filename,
         detector,
       }).catch((error) => ({ error: error.message }));
       outputs.push({ ...result });

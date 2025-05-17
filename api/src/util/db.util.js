@@ -34,6 +34,15 @@ async function init() {
     ).run();
 
     db.prepare(
+      `CREATE TABLE IF NOT EXISTS frigate (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        frigateEventId,
+        filename,
+        frigateEvent JSON,
+        UNIQUE(frigateEventId, filename)
+    )`).run();
+
+    db.prepare(
       `CREATE TABLE IF NOT EXISTS train (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         fileId INTEGER,
@@ -59,6 +68,7 @@ async function init() {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_file_createdAt ON file(createdAt)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_match_createdAt ON match(createdAt)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_match_filename ON match(filename)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_frigate_eventId ON frigate(frigateEventId)`);
     db.exec(
       `CREATE INDEX IF NOT EXISTS idx_match_response_match ON match(json_extract(response, '$.match'))`
     );
@@ -151,6 +161,14 @@ function getFileByFilename(name, filename) {
   return file || false;
 }
 
+function getFrigateByFilename({filename}) {
+  const db = connect();
+  const [file] = db
+    .prepare(`SELECT frigate.* FROM frigate WHERE filename = ?`)
+    .all(filename);
+  return file || false;
+}
+
 function createFile({ name, filename, meta }) {
   const db = connect();
   db.prepare(
@@ -166,6 +184,21 @@ function createFile({ name, filename, meta }) {
     isActive: 1,
   });
 }
+
+function createFrigate({ filename, frigateEventId, event }) {
+  const db = connect();
+  db.prepare(
+    `INSERT INTO frigate
+        VALUES (:id, :filename, :frigateEventId, :frigateEvent)
+        ON CONFLICT (filename, frigateEventId) DO UPDATE SET filename = :filename, frigateEvent = :frigateEvent;`
+  ).run({
+    id: null,
+    filename,
+    frigateEventId,
+    frigateEvent: event || null,
+  });
+}
+
 function createTrain({ id, name, filename, detector, meta }) {
   const db = connect();
   db.prepare(
@@ -217,11 +250,13 @@ module.exports = {
     trained: getTrained,
     filesById: getFilesById,
     fileByFilename: getFileByFilename,
+    frigateByFilename: getFrigateByFilename,
   },
   create: {
     file: createFile,
     match: createMatch,
     train: createTrain,
+    frigate: createFrigate
   },
   update: {
     match: updateMatch,

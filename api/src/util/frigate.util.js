@@ -63,7 +63,7 @@ module.exports.checks = async ({
       }
     }
 
-    if (PROCESSING && type === 'update') {
+    if (PROCESSING.has(id) && type === 'update') {
       return `${id} - still processing previous request`;
     }
 

@@ -79,14 +79,21 @@ module.exports.faceCount = async (path) => {
       new cv.Size(OPENCV.MIN_SIZE_WIDTH, OPENCV.MIN_SIZE_HEIGHT)
     );
     const faceCount = faces.size();
+    let rects = [];
+    for (let i = 0; i < faceCount; i++) {
+      const face = faces.get(i);
+      if (face.width > 0 && face.height > 0) {
+        rects.push(face);
+      }
+    }
     src.delete();
     gray.delete();
     faceCascade.delete();
     faces.delete();
-    return faceCount;
+    return {count: faceCount, rects};
   } catch (error) {
     console.error(`opencv error: `, error.message || error);
-    return 1;
+    return {count: 0, rects: []};
   }
 };
 

@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const mqtt = require('mqtt');
 const romanize = require('romanization');
+const database = require('./db.util');
 const fs = require('./fs.util');
 const { jwt } = require('./auth.util');
 const { AUTH, SERVER, MQTT, FRIGATE, CAMERAS, STORAGE, UI } = require('../constants')();
@@ -49,7 +50,7 @@ const processMessage = ({ topic, message }) => {
     if (!ATTEMPTS.MQTT || PREVIOUS_MQTT_LENGTHS.includes(buffer.length)) return;
     PREVIOUS_MQTT_LENGTHS.unshift(buffer.length);
 
-    fs.writer(`${STORAGE.TMP.PATH}/${filename}`, buffer);
+    await fs.writer(`${STORAGE.TMP.PATH}/${filename}`, buffer);
     await axios({
       method: 'get',
       url: `http://0.0.0.0:${SERVER.PORT}${UI.PATH}/api/recognize`,
@@ -68,7 +69,7 @@ const processMessage = ({ topic, message }) => {
 
   const frigate = async () => {
     const payload = JSON.parse(message.toString());
-    console.verbose(`Incoming event from frigate: ${message.toString()}`);
+    // console.verbose(`Incoming event from frigate: ${message.toString()}`);
     if (payload.type === 'end') return;
 
     await axios({
@@ -114,7 +115,7 @@ module.exports.connect = () => {
       .on('offline', () => logStatus('offline', console.error))
       .on('disconnect', () => logStatus('disconnected', console.error))
       .on('reconnect', () => logStatus('reconnecting', console.warn))
-      .on('message', async (topic, message) => processMessage({ topic, message }).init());
+      .on('message', async (topic, message) => await processMessage({ topic, message }).init());
   } catch (error) {
     logStatus(error.message, console.error);
   }
