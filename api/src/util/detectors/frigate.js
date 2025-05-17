@@ -35,10 +35,10 @@ module.exports.recognize = async ({ key, id, event }) => {
           {
             confidence: response.data.score,
             userid: response.data.face_name,
-            x_min: event.box[0],
-            y_min: event.box[1],
-            x_max: event.box[2],
-            y_max: event.box[3],
+            x_min: event?.box[0] ?? 0,
+            y_min: event?.box[1] ?? 0,
+            x_max: event?.box[2] ?? 0,
+            y_max: event?.box[3] ?? 0,
             ...event,
           }
         ],
@@ -84,12 +84,12 @@ module.exports.remove = ({ name }) => {
 
 module.exports.normalize = ({ camera, data }) => {
   if (!data.success) {
-    console.warn('unexpected deepstack data');
+    console.warn('unexpected frigate data', data);
     return [];
   }
   const { MATCH, UNKNOWN } = config.detect(camera);
   if (!data.predictions) {
-    console.warn('unexpected deepstack predictions data');
+    console.warn('unexpected frigate predictions data');
     return [];
   }
   const normalized = data.predictions.flatMap((obj) => {
