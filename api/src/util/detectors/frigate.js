@@ -14,7 +14,7 @@ module.exports.recognize = async ({ key, id, event }) => {
   const formData = new FormData();
   formData.append('file', fs.createReadStream(key));
   // if (KEY) formData.append('api_key', KEY);
-  const response = await axios({
+  return await axios({
     method: 'post',
     timeout: FRIGATE.TIMEOUT * 1000,
     headers: {
@@ -25,27 +25,27 @@ module.exports.recognize = async ({ key, id, event }) => {
       return true;
     },
     data: formData,
-  });
-  console.verbose('frigate event:', event);
-  const resp = {
+  }).then((response) => {
+    const box = event?.snapshot?.attributes?.find((a) => a.label === 'face')
+      ?? event?.attributes?.box
+      ?? event?.box
+      ?? [0,0, 100,100];
+    return {
       ...response,
       data: {
         ...response.data,
         predictions: [
           {
             confidence: response.data.score,
-            userid: response.data.face_name,
-            x_min: event?.box[0] ?? 0,
-            y_min: event?.box[1] ?? 0,
-            x_max: event?.box[2] ?? 0,
-            y_max: event?.box[3] ?? 0,
-            ...event,
+            userid: response.data.label,
+            x_min: box[0],
+            y_min: box[1],
+            x_max: box[2],
+            y_max: box[3]
           }
-        ],
-      },
-    };
-  console.verbose(`detector response: ${JSON.stringify(resp.data)}`);
-  return resp;
+        ]
+      }
+    }});
 };
 
 module.exports.train = ({ name, key }) => {
@@ -59,7 +59,7 @@ module.exports.train = ({ name, key }) => {
     headers: {
       ...formData.getHeaders(),
     },
-    url: `${URL}/api/faces/${name[0].upperCase() + name.slice(1)}/register`,
+    url: `${URL}/api/faces/${name[0].toUpperCase() + name.slice(1)}/register`,
     data: formData,
   });
 };
@@ -71,7 +71,7 @@ module.exports.remove = ({ name }) => {
   return axios({
     method: 'post',
     timeout: FRIGATE.TIMEOUT * 1000,
-    url: `${URL}/api/faces/${name[0].upperCase() + name.slice(1)}/delete`,
+    url: `${URL}/api/faces/${name[0].toUpperCase() + name.slice(1)}/delete`,
     headers: {
       ...formData.getHeaders(),
     },
