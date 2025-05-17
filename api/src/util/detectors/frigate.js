@@ -59,7 +59,7 @@ module.exports.train = ({ name, key }) => {
     headers: {
       ...formData.getHeaders(),
     },
-    url: `${URL}/api/faces/${name}/register`,
+    url: `${URL}/api/faces/${name[0].upperCase() + name.slice(1)}/register`,
     data: formData,
   });
 };
@@ -71,7 +71,7 @@ module.exports.remove = ({ name }) => {
   return axios({
     method: 'post',
     timeout: FRIGATE.TIMEOUT * 1000,
-    url: `${URL}/api/faces/${name}/delete`,
+    url: `${URL}/api/faces/${name[0].upperCase() + name.slice(1)}/delete`,
     headers: {
       ...formData.getHeaders(),
     },
