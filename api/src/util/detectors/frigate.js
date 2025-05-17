@@ -14,7 +14,7 @@ module.exports.recognize = async ({ key, id, event }) => {
   const formData = new FormData();
   formData.append('file', fs.createReadStream(key));
   // if (KEY) formData.append('api_key', KEY);
-  return await axios({
+  return axios({
     method: 'post',
     timeout: FRIGATE.TIMEOUT * 1000,
     headers: {
@@ -27,9 +27,9 @@ module.exports.recognize = async ({ key, id, event }) => {
     data: formData,
   }).then((response) => {
     const box = event?.attributes?.snapshot?.attributes?.find((a) => a.label === 'face')
-      ?? event?.attributes?.snapshot?.box
-      ?? event?.attributes?.box
-      ?? [0,0, 100,100];
+      || event?.attributes?.snapshot?.box
+      || event?.attributes?.box
+      || [0,0, 100,100];
     return {
       ...response,
       data: {
@@ -37,7 +37,7 @@ module.exports.recognize = async ({ key, id, event }) => {
         predictions: [
           {
             confidence: response.data.score,
-            userid: response.data.label,
+            userid: response.data.face_name,
             x_min: box[0],
             y_min: box[1],
             x_max: box[2],
@@ -45,7 +45,8 @@ module.exports.recognize = async ({ key, id, event }) => {
           }
         ]
       }
-    }});
+    };
+  });
 };
 
 module.exports.train = ({ name, key }) => {
