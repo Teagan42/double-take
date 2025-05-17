@@ -49,7 +49,7 @@ module.exports.recognize = async ({ key, id, event }) => {
 };
 
 module.exports.train = ({ name, key }) => {
-  const { URL } = DEEPSTACK;
+  const { URL } = FRIGATE;
   const formData = new FormData();
   formData.append('file', fs.createReadStream(key));
   // if (KEY) formData.append('api_key', KEY);
