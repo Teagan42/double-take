@@ -26,9 +26,9 @@ module.exports.recognize = async ({ key, id, event }) => {
     },
     data: formData,
   }).then((response) => {
-    const box = event?.snapshot?.attributes?.find((a) => a.label === 'face')
+    const box = event?.attributes?.snapshot?.attributes?.find((a) => a.label === 'face')
+      ?? event?.attributes?.snapshot?.box
       ?? event?.attributes?.box
-      ?? event?.box
       ?? [0,0, 100,100];
     return {
       ...response,

@@ -59,11 +59,11 @@ module.exports.start = async (req, res) => {
       const { type: frigateEventType, topic } = req.body;
       const attributes = req.body.after ? req.body.after : req.body.before;
       const { id, label, camera, area, current_zones: zones, box } = attributes;
-      event = { id, label, camera, area, zones, frigateEventType, topic, box, ...event };
+      event = { id, label, camera, area, zones, frigateEventType, topic, box, attributes, ...event };
     } else {
       const { url, camera } = req.query;
 
-      event = { id: uuidv4(), url, camera, zones: [], ...event };
+      event = { id: uuidv4(), url, camera, zones: [], attributes: {}, ...event };
     }
 
     const { id, camera, zones, url } = event;
