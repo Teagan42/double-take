@@ -1,4 +1,5 @@
 const axios = require('axios');
+const fs = require('fs');
 const FormData = require('form-data');
 const actions = require('./actions');
 const { loadImage, createCanvas } = require('canvas');
